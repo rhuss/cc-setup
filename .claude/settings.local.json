@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(fd:*)",
+      "Bash(ls:*)",
+      "Bash(uv run:*)"
+    ]
+  }
+}

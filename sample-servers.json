@@ -1,0 +1,48 @@
+{
+  "servers": {
+    "github-copilot": {
+      "description": "GitHub Copilot MCP",
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ghp_your_token_here"
+      }
+    },
+    "my-jira": {
+      "description": "Jira instance",
+      "type": "http",
+      "url": "https://mcp-jira.example.com/mcp",
+      "headers": {
+        "Authorization": "Basic base64_encoded_user_pass"
+      }
+    },
+    "filesystem": {
+      "description": "Local filesystem access",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+    },
+    "sqlite-db": {
+      "description": "SQLite database",
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "~/data.db"],
+      "env": {
+        "SQLITE_READONLY": "true"
+      }
+    },
+    "google-workspace": {
+      "description": "Google Workspace (personal)",
+      "type": "http",
+      "url": "https://mcp-google.example.com/mcp"
+    },
+    "slack": {
+      "description": "Slack workspace",
+      "type": "sse",
+      "url": "https://mcp-slack.example.com/sse",
+      "headers": {
+        "Authorization": "Basic base64_encoded_user_pass"
+      }
+    }
+  }
+}
