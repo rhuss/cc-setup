@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/rhuss/mcp-setup/internal/config"
-	"github.com/rhuss/mcp-setup/internal/display"
+	"github.com/rhuss/cc-mcp-setup/internal/config"
+	"github.com/rhuss/cc-mcp-setup/internal/display"
 	"github.com/spf13/cobra"
 )
 

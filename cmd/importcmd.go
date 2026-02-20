@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/rhuss/mcp-setup/internal/config"
-	"github.com/rhuss/mcp-setup/internal/display"
+	"github.com/rhuss/cc-mcp-setup/internal/config"
+	"github.com/rhuss/cc-mcp-setup/internal/display"
 	"github.com/spf13/cobra"
 )
 
@@ -26,15 +26,16 @@ func runImport() error {
 	userPath := config.ConfigPath("user")
 
 	var source string
-	err := huh.NewSelect[string]().
-		Title("Import servers from").
-		Options(
-			huh.NewOption(fmt.Sprintf("Both configs  %s", display.StyleDim.Render("(recommended)")), "both"),
-			huh.NewOption(fmt.Sprintf("Project       %s", display.StyleDim.Render(projectPath)), "project"),
-			huh.NewOption(fmt.Sprintf("User          %s", display.StyleDim.Render(userPath)), "user"),
-		).
-		Value(&source).
-		Run()
+	err := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Import servers from").
+			Options(
+				huh.NewOption(fmt.Sprintf("Both configs  %s", display.StyleDim.Render("(recommended)")), "both"),
+				huh.NewOption(fmt.Sprintf("Project       %s", display.StyleDim.Render(projectPath)), "project"),
+				huh.NewOption(fmt.Sprintf("User          %s", display.StyleDim.Render(userPath)), "user"),
+			).
+			Value(&source),
+	)).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -98,8 +99,7 @@ func runImport() error {
 		return handleAbort(err)
 	}
 	if !confirmed {
-		fmt.Println(display.StyleDim.Render("Cancelled."))
-		return nil
+		return errCancelled
 	}
 
 	// Merge: don't overwrite existing entries

@@ -28,9 +28,16 @@ func confirmTheme() *huh.Theme {
 	return t
 }
 
-// confirmKeyMap returns a keymap with tab added to Toggle.
-func confirmKeyMap() *huh.KeyMap {
+// formKeyMap returns the default huh keymap with ESC added as quit/abort key.
+func formKeyMap() *huh.KeyMap {
 	km := huh.NewDefaultKeyMap()
+	km.Quit = key.NewBinding(key.WithKeys("ctrl+c", "esc"))
+	return km
+}
+
+// confirmKeyMap returns a keymap with ESC-to-quit and tab added to Toggle.
+func confirmKeyMap() *huh.KeyMap {
+	km := formKeyMap()
 	km.Confirm.Toggle = key.NewBinding(
 		key.WithKeys("h", "l", "right", "left", "tab"),
 		key.WithHelp("tab/←/→", "toggle"),

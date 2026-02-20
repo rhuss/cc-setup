@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/x/term"
-	"github.com/rhuss/mcp-setup/internal/config"
+	"github.com/rhuss/cc-mcp-setup/internal/config"
 )
 
 // Styles used throughout the CLI.
@@ -22,6 +22,13 @@ var (
 	StyleDim     = lipgloss.NewStyle().Faint(true)
 	StyleHeader  = lipgloss.NewStyle().Bold(true).Padding(0, 1)
 	StyleCell    = lipgloss.NewStyle().Padding(0, 1)
+
+	// Health indicator styles.
+	StyleHealthOK      = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))           // green
+	StyleHealthAuth    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))           // yellow
+	StyleHealthError   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))           // red
+	StyleHealthUnknown = lipgloss.NewStyle().Faint(true)                               // dim
+
 )
 
 // TermWidth returns the current terminal width, defaulting to 80 if detection fails.

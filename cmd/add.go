@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/rhuss/mcp-setup/internal/config"
-	"github.com/rhuss/mcp-setup/internal/display"
+	"github.com/rhuss/cc-mcp-setup/internal/config"
+	"github.com/rhuss/cc-mcp-setup/internal/display"
 	"github.com/spf13/cobra"
 )
 
@@ -27,20 +27,21 @@ var addCmd = &cobra.Command{
 // runAddInteractive prompts for a server name, then runs the add form.
 func runAddInteractive() error {
 	var name string
-	err := huh.NewInput().
-		Title("Server name").
-		Placeholder("my-server").
-		Value(&name).
-		Validate(func(s string) error {
-			if s == "" {
-				return fmt.Errorf("name is required")
-			}
-			if strings.ContainsAny(s, " \t") {
-				return fmt.Errorf("name must not contain spaces")
-			}
-			return nil
-		}).
-		Run()
+	err := huh.NewForm(huh.NewGroup(
+		huh.NewInput().
+			Title("Server name").
+			Placeholder("my-server").
+			Value(&name).
+			Validate(func(s string) error {
+				if s == "" {
+					return fmt.Errorf("name is required")
+				}
+				if strings.ContainsAny(s, " \t") {
+					return fmt.Errorf("name must not contain spaces")
+				}
+				return nil
+			}),
+	)).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -88,8 +89,7 @@ func runServerForm(name string, prefill map[string]any) error {
 				return handleAbort(err)
 			}
 			if !overwrite {
-				fmt.Println(display.StyleDim.Render("Cancelled."))
-				return nil
+				return errCancelled
 			}
 		}
 	}
@@ -99,15 +99,16 @@ func runServerForm(name string, prefill map[string]any) error {
 	if isEdit {
 		serverType, _ = prefill["type"].(string)
 	}
-	err = huh.NewSelect[string]().
-		Title(fmt.Sprintf("Transport type for %s", display.StyleCyan.Render(name))).
-		Options(
-			huh.NewOption("http (streamable HTTP)", "http"),
-			huh.NewOption("sse (server-sent events)", "sse"),
-			huh.NewOption("stdio (local process)", "stdio"),
-		).
-		Value(&serverType).
-		Run()
+	err = huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title(fmt.Sprintf("Transport type for %s", display.StyleCyan.Render(name))).
+			Options(
+				huh.NewOption("http (streamable HTTP)", "http"),
+				huh.NewOption("sse (server-sent events)", "sse"),
+				huh.NewOption("stdio (local process)", "stdio"),
+			).
+			Value(&serverType),
+	)).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -136,11 +137,12 @@ func runServerForm(name string, prefill map[string]any) error {
 			description = d
 		}
 	}
-	err = huh.NewInput().
-		Title("Description").
-		Value(&description).
-		Placeholder(defaultDesc).
-		Run()
+	err = huh.NewForm(huh.NewGroup(
+		huh.NewInput().
+			Title("Description").
+			Value(&description).
+			Placeholder(defaultDesc),
+	)).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -188,8 +190,7 @@ func runServerForm(name string, prefill map[string]any) error {
 		return handleAbort(err)
 	}
 	if !confirmed {
-		fmt.Println(display.StyleDim.Render("Cancelled."))
-		return nil
+		return errCancelled
 	}
 
 	servers[name] = entry
@@ -213,20 +214,21 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 	if prefill != nil {
 		url, _ = prefill["url"].(string)
 	}
-	err := huh.NewInput().
-		Title("Server URL").
-		Placeholder("https://example.com/mcp").
-		Value(&url).
-		Validate(func(s string) error {
-			if s == "" {
-				return fmt.Errorf("URL is required")
-			}
-			if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
-				return fmt.Errorf("URL must start with http:// or https://")
-			}
-			return nil
-		}).
-		Run()
+	err := huh.NewForm(huh.NewGroup(
+		huh.NewInput().
+			Title("Server URL").
+			Placeholder("https://example.com/mcp").
+			Value(&url).
+			Validate(func(s string) error {
+				if s == "" {
+					return fmt.Errorf("URL is required")
+				}
+				if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
+					return fmt.Errorf("URL must start with http:// or https://")
+				}
+				return nil
+			}),
+	)).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -254,16 +256,17 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 		}
 	}
 
-	err = huh.NewSelect[string]().
-		Title("Authentication").
-		Options(
-			huh.NewOption("None", "none"),
-			huh.NewOption("Basic (username + password)", "basic"),
-			huh.NewOption("Bearer token", "bearer"),
-			huh.NewOption("API key (Token header)", "apikey"),
-		).
-		Value(&authType).
-		Run()
+	err = huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Authentication").
+			Options(
+				huh.NewOption("None", "none"),
+				huh.NewOption("Basic (username + password)", "basic"),
+				huh.NewOption("Bearer token", "bearer"),
+				huh.NewOption("API key (Token header)", "apikey"),
+			).
+			Value(&authType),
+	)).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -294,7 +297,7 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 						return nil
 					}),
 			),
-		).Run()
+		).WithKeyMap(formKeyMap()).Run()
 		if err != nil {
 			return handleAbort(err)
 		}
@@ -305,17 +308,18 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 
 	case "bearer":
 		var token string
-		err = huh.NewInput().
-			Title("Bearer token").
-			EchoMode(huh.EchoModePassword).
-			Value(&token).
-			Validate(func(s string) error {
-				if s == "" {
-					return fmt.Errorf("token is required")
-				}
-				return nil
-			}).
-			Run()
+		err = huh.NewForm(huh.NewGroup(
+			huh.NewInput().
+				Title("Bearer token").
+				EchoMode(huh.EchoModePassword).
+				Value(&token).
+				Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("token is required")
+					}
+					return nil
+				}),
+		)).WithKeyMap(formKeyMap()).Run()
 		if err != nil {
 			return handleAbort(err)
 		}
@@ -325,17 +329,18 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 
 	case "apikey":
 		var token string
-		err = huh.NewInput().
-			Title("API key").
-			EchoMode(huh.EchoModePassword).
-			Value(&token).
-			Validate(func(s string) error {
-				if s == "" {
-					return fmt.Errorf("API key is required")
-				}
-				return nil
-			}).
-			Run()
+		err = huh.NewForm(huh.NewGroup(
+			huh.NewInput().
+				Title("API key").
+				EchoMode(huh.EchoModePassword).
+				Value(&token).
+				Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("API key is required")
+					}
+					return nil
+				}),
+		)).WithKeyMap(formKeyMap()).Run()
 		if err != nil {
 			return handleAbort(err)
 		}
@@ -400,7 +405,7 @@ func stdioFields(entry map[string]any, prefill map[string]any) error {
 				Placeholder("SOME_VAR=value, OTHER=value").
 				Value(&envStr),
 		),
-	).Run()
+	).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -460,10 +465,12 @@ func splitArgs(s string) []string {
 	return args
 }
 
+// errCancelled is a sentinel indicating the user pressed ESC to cancel.
+var errCancelled = fmt.Errorf("cancelled")
+
 func handleAbort(err error) error {
 	if err == huh.ErrUserAborted {
-		fmt.Println(display.StyleDim.Render("Cancelled."))
-		return nil
+		return errCancelled
 	}
 	return err
 }

@@ -1,17 +1,20 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/rhuss/mcp-setup/internal/config"
-	"github.com/rhuss/mcp-setup/internal/display"
+	"github.com/rhuss/cc-mcp-setup/internal/config"
+	"github.com/rhuss/cc-mcp-setup/internal/display"
+	mcpclient "github.com/rhuss/cc-mcp-setup/internal/mcp"
 )
 
 // manageAction represents the action chosen from the server list.
@@ -24,6 +27,7 @@ const (
 	actionDelete
 	actionSave
 	actionImport
+	actionTools
 	actionQuit
 )
 
@@ -70,9 +74,16 @@ func serverHeaders(serverDef map[string]any) map[string]any {
 	return h
 }
 
+// healthResultMsg delivers the result of an async health check.
+type healthResultMsg struct {
+	name   string
+	result mcpclient.HealthResult
+}
+
 // checkboxDelegate renders single-line items with [x]/[ ] checkboxes.
 type checkboxDelegate struct {
 	checked map[string]bool
+	health  map[string]mcpclient.HealthResult
 }
 
 func (d checkboxDelegate) Height() int                             { return 1 }
@@ -87,6 +98,19 @@ func (d checkboxDelegate) Render(w io.Writer, m list.Model, index int, item list
 
 	isFocused := index == m.Index()
 	isChecked := d.checked[si.name]
+
+	// Health indicator
+	healthDot := display.StyleHealthUnknown.Render("○")
+	if hr, ok := d.health[si.name]; ok {
+		switch hr.Status {
+		case mcpclient.HealthOK:
+			healthDot = display.StyleHealthOK.Render("●")
+		case mcpclient.HealthAuthRequired:
+			healthDot = display.StyleHealthAuth.Render("●")
+		case mcpclient.HealthError:
+			healthDot = display.StyleHealthError.Render("●")
+		}
+	}
 
 	cursor := "  "
 	if isFocused {
@@ -115,7 +139,7 @@ func (d checkboxDelegate) Render(w io.Writer, m list.Model, index int, item list
 			cbStyled = green.Render(cb)
 		}
 
-		line := cyanBold.Render(cursor) + cbStyled + " " + cyanBold.Render(paddedName) + cyan.Render(si.detail)
+		line := healthDot + " " + cyanBold.Render(cursor) + cbStyled + " " + cyanBold.Render(paddedName) + cyan.Render(si.detail)
 		if si.desc != "" {
 			line += "  " + dim.Render(si.desc)
 		}
@@ -129,7 +153,7 @@ func (d checkboxDelegate) Render(w io.Writer, m list.Model, index int, item list
 			cbStyled = green.Render(cb)
 		}
 
-		line := cursor + cbStyled + " " + paddedName + dim.Render(si.detail)
+		line := healthDot + " " + cursor + cbStyled + " " + paddedName + dim.Render(si.detail)
 		if si.desc != "" {
 			line += "  " + dim.Render(si.desc)
 		}
@@ -145,6 +169,7 @@ type manageKeyMap struct {
 	Delete       key.Binding
 	Save         key.Binding
 	Import       key.Binding
+	Tools        key.Binding
 	ScopeProject key.Binding
 	ScopeUser    key.Binding
 	Quit         key.Binding
@@ -158,11 +183,15 @@ func newManageKeyMap() manageKeyMap {
 		Delete:       key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 		Save:         key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "save")),
 		Import:       key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "import")),
+		Tools:        key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "tools")),
 		ScopeProject: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "project scope")),
 		ScopeUser:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "user scope")),
 		Quit:         key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q", "quit")),
 	}
 }
+
+// bannerHeight is the number of lines the scope banner occupies.
+const bannerHeight = 1
 
 // manageModel is the BubbleTea model for the unified server management screen.
 type manageModel struct {
@@ -171,8 +200,10 @@ type manageModel struct {
 	action   manageAction
 	selected string
 	checked  map[string]bool
+	health   map[string]mcpclient.HealthResult
 	scope    string
 	servers  config.ServerMap
+	width    int
 }
 
 // loadCheckedState reads the Claude config for the given scope and returns
@@ -188,20 +219,45 @@ func loadCheckedState(servers config.ServerMap, scope string) map[string]bool {
 	return checked
 }
 
-// buildTitle returns the list title with scope and path info.
-func buildTitle(scope string) string {
+// scopeBanner renders a full-width colored bar showing the active scope.
+func scopeBanner(scope string, width int) string {
+	if width <= 0 {
+		width = 80
+	}
+
 	path := config.ConfigPath(scope)
-	return fmt.Sprintf("MCP Servers [%s: %s]", scope, path)
+	label := fmt.Sprintf(" %s  %s ", strings.ToUpper(scope), path)
+	pad := width - lipgloss.Width(label)
+	if pad < 0 {
+		pad = 0
+	}
+	label += strings.Repeat(" ", pad)
+
+	var style lipgloss.Style
+	if scope == "project" {
+		style = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(lipgloss.Color("#225599"))
+	} else {
+		style = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(lipgloss.Color("#884488"))
+	}
+
+	return style.Render(label)
 }
 
 func newManageModel(servers config.ServerMap, scope string, checked map[string]bool) manageModel {
 	items := buildServerItems(servers)
 	keys := newManageKeyMap()
+	health := make(map[string]mcpclient.HealthResult, len(servers))
 
-	delegate := checkboxDelegate{checked: checked}
+	delegate := checkboxDelegate{checked: checked, health: health}
 
 	l := list.New(items, delegate, 0, 0)
-	l.Title = buildTitle(scope)
+	l.Title = "MCP Servers"
 	l.Styles.Title = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("6")).
@@ -210,32 +266,59 @@ func newManageModel(servers config.ServerMap, scope string, checked map[string]b
 	l.SetFilteringEnabled(true)
 	l.DisableQuitKeybindings()
 
-	// Short help: toggle, add, edit, delete, save, import
+	// Short help: toggle, add, edit, delete, save, import, tools
 	l.AdditionalShortHelpKeys = func() []key.Binding {
-		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import}
+		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import, keys.Tools}
 	}
 	// Full help adds: scope keys
 	l.AdditionalFullHelpKeys = func() []key.Binding {
-		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import, keys.ScopeProject, keys.ScopeUser}
+		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import, keys.Tools, keys.ScopeProject, keys.ScopeUser}
 	}
 
 	return manageModel{
 		list:    l,
 		keys:    keys,
 		checked: checked,
+		health:  health,
 		scope:   scope,
 		servers: servers,
 	}
 }
 
 func (m manageModel) Init() tea.Cmd {
-	return nil
+	cmds := make([]tea.Cmd, 0, len(m.servers))
+	for name, def := range m.servers {
+		name, def := name, def // capture loop vars
+		cmds = append(cmds, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			result := mcpclient.CheckHealth(ctx, name, def)
+			return healthResultMsg{name: name, result: result}
+		})
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m manageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case healthResultMsg:
+		m.health[msg.name] = msg.result
+		if msg.result.Status == mcpclient.HealthAuthRequired {
+			m.list.NewStatusMessage(
+				display.StyleYellow.Render(msg.name+": ") +
+					display.StyleDim.Render("reachable (requires OAuth)"),
+			)
+		} else if msg.result.Err != nil {
+			m.list.NewStatusMessage(
+				display.StyleRed.Render(msg.name+": ") +
+					display.StyleDim.Render(msg.result.Err.Error()),
+			)
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, msg.Height)
+		m.width = msg.Width
+		m.list.SetSize(msg.Width, msg.Height-bannerHeight)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -259,7 +342,6 @@ func (m manageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.scope != "project" {
 				m.scope = "project"
 				m.reloadCheckedState()
-				m.list.Title = buildTitle(m.scope)
 			}
 			return m, nil
 
@@ -267,7 +349,6 @@ func (m manageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.scope != "user" {
 				m.scope = "user"
 				m.reloadCheckedState()
-				m.list.Title = buildTitle(m.scope)
 			}
 			return m, nil
 
@@ -296,6 +377,13 @@ func (m manageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Import):
 			m.action = actionImport
 			return m, tea.Quit
+
+		case key.Matches(msg, m.keys.Tools):
+			if item, ok := m.list.SelectedItem().(serverItem); ok {
+				m.action = actionTools
+				m.selected = item.name
+				return m, tea.Quit
+			}
 		}
 	}
 
@@ -319,7 +407,7 @@ func (m *manageModel) reloadCheckedState() {
 }
 
 func (m manageModel) View() string {
-	return m.list.View()
+	return scopeBanner(m.scope, m.width) + "\n" + m.list.View()
 }
 
 // runSave computes adds/removes vs the current Claude config, shows a summary,
@@ -365,8 +453,7 @@ func runSave(servers config.ServerMap, checked map[string]bool, scope string) er
 		return handleAbort(err)
 	}
 	if !confirmed {
-		fmt.Println(display.StyleDim.Render("Cancelled."))
-		return nil
+		return errCancelled
 	}
 
 	entries := config.ServerMap{}
@@ -424,37 +511,47 @@ func runManage() error {
 		final := result.(manageModel)
 		scope = final.scope // preserve scope for next iteration
 
+		// Clear screen after leaving alt screen so inline forms start clean
+		if final.action != actionQuit && final.action != actionNone {
+			fmt.Print("\033[2J\033[H")
+		}
+
 		switch final.action {
 		case actionQuit, actionNone:
 			return nil
 
 		case actionAdd:
-			if err := runAddInteractive(); err != nil {
+			if err := runAddInteractive(); err != nil && err != errCancelled {
 				return err
 			}
 
 		case actionEdit:
-			if err := runEdit(final.selected); err != nil {
+			if err := runEdit(final.selected); err != nil && err != errCancelled {
 				return err
 			}
 
 		case actionDelete:
-			if err := runDeleteSingle(final.selected); err != nil {
+			if err := runDeleteSingle(final.selected); err != nil && err != errCancelled {
 				return err
 			}
 
 		case actionSave:
-			if err := runSave(final.servers, final.checked, final.scope); err != nil {
+			if err := runSave(final.servers, final.checked, final.scope); err != nil && err != errCancelled {
 				return err
 			}
 
 		case actionImport:
-			if err := runImport(); err != nil {
+			if err := runImport(); err != nil && err != errCancelled {
+				return err
+			}
+
+		case actionTools:
+			if err := runToolPermissions(final.selected, final.servers, final.scope); err != nil && err != errCancelled {
 				return err
 			}
 		}
 
-		// After any action, loop back to re-read config and show fresh list
+		// Loop back to re-read config and show fresh list
 	}
 }
 
@@ -467,15 +564,16 @@ func runManageEmpty() error {
 	fmt.Println()
 
 	var choice string
-	err := huh.NewSelect[string]().
-		Title("Get started").
-		Options(
-			huh.NewOption("Add a new server", "add"),
-			huh.NewOption("Import from existing Claude config", "import"),
-			huh.NewOption("Quit", "quit"),
-		).
-		Value(&choice).
-		Run()
+	err := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Get started").
+			Options(
+				huh.NewOption("Add a new server", "add"),
+				huh.NewOption("Import from existing Claude config", "import"),
+				huh.NewOption("Quit", "quit"),
+			).
+			Value(&choice),
+	)).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -517,7 +615,6 @@ func runDeleteSingle(name string) error {
 		return handleAbort(err)
 	}
 	if !confirmed {
-		fmt.Println(display.StyleDim.Render("Cancelled."))
 		return nil
 	}
 

@@ -3,7 +3,11 @@
     "allow": [
       "Bash(fd:*)",
       "Bash(ls:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(make build:*)",
+      "Bash(go list:*)",
+      "Bash(python3:*)",
+      "Bash(go doc:*)"
     ]
   }
 }
