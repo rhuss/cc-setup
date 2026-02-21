@@ -14,30 +14,39 @@ Interactive CLI to manage which MCP servers are active per project in [Claude Co
 
 ## Install
 
-### macOS (Homebrew)
+### macOS
+
+**Homebrew** (recommended):
 
 ```bash
 brew install rhuss/tap/cc-setup
 ```
 
-### Linux / macOS (install script)
+**Install script** (alternative):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rhuss/cc-setup/main/install.sh | sh
 ```
 
-Installs to `~/.local/bin` by default. Override with:
+### Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rhuss/cc-setup/main/install.sh | sh
+```
+
+The install script detects your OS and architecture (amd64/arm64), downloads the correct binary, verifies the SHA256 checksum, and installs to `~/.local/bin`.
+
+To install to a different location:
 
 ```bash
 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/rhuss/cc-setup/main/install.sh | sudo sh
 ```
 
-### Download binary
+### Other options
 
-Pre-built binaries for macOS and Linux (amd64/arm64) are available on the
-[Releases page](https://github.com/rhuss/cc-setup/releases).
+Pre-built binaries for all platforms are available on the [Releases page](https://github.com/rhuss/cc-setup/releases).
 
-### Build from source
+To build from source:
 
 ```bash
 make build
