@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/rhuss/cc-mcp-setup/internal/config"
-	"github.com/rhuss/cc-mcp-setup/internal/display"
+	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/rhuss/cc-setup/internal/display"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +41,7 @@ func runAddInteractive() error {
 				}
 				return nil
 			}),
-	)).WithKeyMap(formKeyMap()).Run()
+	)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -108,7 +108,7 @@ func runServerForm(name string, prefill map[string]any) error {
 				huh.NewOption("stdio (local process)", "stdio"),
 			).
 			Value(&serverType),
-	)).WithKeyMap(formKeyMap()).Run()
+	)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -142,7 +142,7 @@ func runServerForm(name string, prefill map[string]any) error {
 			Title("Description").
 			Value(&description).
 			Placeholder(defaultDesc),
-	)).WithKeyMap(formKeyMap()).Run()
+	)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -152,30 +152,33 @@ func runServerForm(name string, prefill map[string]any) error {
 	entry["description"] = description
 
 	// Step 4: Review and confirm
+	label := display.StyleLabel
+	value := display.StyleCyan
+
 	fmt.Println()
-	fmt.Printf("  Server:      %s\n", display.StyleCyan.Render(name))
-	fmt.Printf("  Type:        %s\n", serverType)
+	fmt.Printf("  %s  %s\n", label.Render("Server:     "), value.Render(name))
+	fmt.Printf("  %s  %s\n", label.Render("Type:       "), value.Render(serverType))
 	if url, ok := entry["url"].(string); ok {
-		fmt.Printf("  URL:         %s\n", url)
+		fmt.Printf("  %s  %s\n", label.Render("URL:        "), value.Render(url))
 	}
 	if cmd, ok := entry["command"].(string); ok {
-		fmt.Printf("  Command:     %s\n", cmd)
+		fmt.Printf("  %s  %s\n", label.Render("Command:    "), value.Render(cmd))
 	}
 	if args, ok := entry["args"].([]string); ok && len(args) > 0 {
-		fmt.Printf("  Args:        %s\n", strings.Join(args, " "))
+		fmt.Printf("  %s  %s\n", label.Render("Args:       "), value.Render(strings.Join(args, " ")))
 	}
 	if env, ok := entry["env"].(map[string]any); ok && len(env) > 0 {
 		parts := make([]string, 0, len(env))
 		for k, v := range env {
 			parts = append(parts, fmt.Sprintf("%s=%v", k, v))
 		}
-		fmt.Printf("  Env:         %s\n", strings.Join(parts, ", "))
+		fmt.Printf("  %s  %s\n", label.Render("Env:        "), value.Render(strings.Join(parts, ", ")))
 	}
 	if headers, ok := entry["headers"].(map[string]any); ok {
 		_, authLabel := display.DecodeAuth(headers)
-		fmt.Printf("  Auth:        %s\n", authLabel)
+		fmt.Printf("  %s  %s\n", label.Render("Auth:       "), value.Render(authLabel))
 	}
-	fmt.Printf("  Description: %s\n", description)
+	fmt.Printf("  %s  %s\n", label.Render("Description:"), value.Render(description))
 	fmt.Println()
 
 	confirmLabel := "Add this server?"
@@ -228,7 +231,7 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 				}
 				return nil
 			}),
-	)).WithKeyMap(formKeyMap()).Run()
+	)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -266,7 +269,7 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 				huh.NewOption("API key (Token header)", "apikey"),
 			).
 			Value(&authType),
-	)).WithKeyMap(formKeyMap()).Run()
+	)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -297,7 +300,7 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 						return nil
 					}),
 			),
-		).WithKeyMap(formKeyMap()).Run()
+		).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 		if err != nil {
 			return handleAbort(err)
 		}
@@ -319,7 +322,7 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 					}
 					return nil
 				}),
-		)).WithKeyMap(formKeyMap()).Run()
+		)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 		if err != nil {
 			return handleAbort(err)
 		}
@@ -340,7 +343,7 @@ func httpFields(entry map[string]any, prefill map[string]any) error {
 					}
 					return nil
 				}),
-		)).WithKeyMap(formKeyMap()).Run()
+		)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 		if err != nil {
 			return handleAbort(err)
 		}
@@ -405,7 +408,7 @@ func stdioFields(entry map[string]any, prefill map[string]any) error {
 				Placeholder("SOME_VAR=value, OTHER=value").
 				Value(&envStr),
 		),
-	).WithKeyMap(formKeyMap()).Run()
+	).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}

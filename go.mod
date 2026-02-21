@@ -1,4 +1,4 @@
-module github.com/rhuss/cc-mcp-setup
+module github.com/rhuss/cc-setup
 
 go 1.25.0
 

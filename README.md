@@ -1,4 +1,4 @@
-# cc-mcp-setup
+# cc-setup
 
 Interactive CLI to manage which MCP servers are active per project in [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Define all your servers once in a central config, then cherry-pick which ones to enable for each project. This keeps Claude's context clean by loading only the tools you actually need.
 
@@ -28,13 +28,13 @@ No runtime dependencies. Single static binary.
 
 ```bash
 # If you already have servers in Claude Code, import them
-mcp-setup import
+cc-setup import
 
 # Or add a new server interactively
-mcp-setup add my-server
+cc-setup add my-server
 
 # Launch the management UI
-mcp-setup
+cc-setup
 ```
 
 ## Configuration
@@ -42,7 +42,7 @@ mcp-setup
 All server definitions live in a single central config file:
 
 ```
-~/.config/mcp-setup/mcp.json
+~/.config/cc-setup/mcp.json
 ```
 
 Respects `XDG_CONFIG_HOME` if set.
@@ -79,7 +79,7 @@ See `sample-servers.json` for a complete example with all transport types.
 ### Interactive management (default)
 
 ```bash
-mcp-setup
+cc-setup
 ```
 
 Opens a full-screen TUI with all your registered servers. Each server shows a health indicator dot, its transport type, endpoint, and auth method.
@@ -94,7 +94,6 @@ Opens a full-screen TUI with all your registered servers. Each server shows a he
 | `d` | Delete selected server |
 | `s` | Save selection to Claude config |
 | `i` | Import servers from Claude config |
-| `t` | Manage tool permissions for selected server |
 | `p` | Switch to project scope |
 | `u` | Switch to user scope |
 | `/` | Filter servers |
@@ -113,7 +112,7 @@ For OAuth-protected servers, the CLI automatically uses tokens stored by Claude 
 
 ### Tool permissions
 
-Press `t` on any server in the management screen to discover its tools and configure which ones Claude Code may auto-approve.
+Enter a server's detail view (`e`/`enter`) and select "Tool permissions" to discover its tools and configure which ones Claude Code may auto-approve.
 
 - Permissions are written to `settings.local.json` (project or user scope)
 - When all tools are selected, a wildcard entry (`mcp__<server>__*`) is used
@@ -125,7 +124,7 @@ Tool annotations are shown when provided by the server: read-only tools show an 
 ### Add a server interactively
 
 ```bash
-mcp-setup add my-new-server
+cc-setup add my-new-server
 ```
 
 Walks through transport type, URL/command, authentication, and description in an interactive form. Writes directly to the central config.
@@ -134,10 +133,10 @@ Walks through transport type, URL/command, authentication, and description in an
 
 ```bash
 # Remove specific servers
-mcp-setup remove my-server another-server
+cc-setup remove my-server another-server
 
 # Interactive removal (no args)
-mcp-setup remove
+cc-setup remove
 ```
 
 ### Import from existing config
@@ -145,7 +144,7 @@ mcp-setup remove
 If you already have servers configured in Claude Code, import them into the central config:
 
 ```bash
-mcp-setup import
+cc-setup import
 ```
 
 This reads from your project `.mcp.json`, user `~/.claude.json`, or both, and merges them into the central config. Existing entries are not overwritten.
@@ -153,7 +152,7 @@ This reads from your project `.mcp.json`, user `~/.claude.json`, or both, and me
 ### Print version
 
 ```bash
-mcp-setup version
+cc-setup version
 ```
 
 ## Server types
@@ -198,7 +197,7 @@ The tool supports all Claude Code MCP transport types:
 
 MCP servers that use OAuth (like Google-authenticated servers) typically show as "auth required" (yellow dot) because the CLI has no credentials to present. When Claude Code has already authenticated with these servers, their OAuth tokens are stored in `~/.claude/.credentials.json`.
 
-`mcp-setup` reads these stored credentials and automatically injects them as Bearer tokens when connecting to matching servers. This works transparently for health checks and tool discovery.
+`cc-setup` reads these stored credentials and automatically injects them as Bearer tokens when connecting to matching servers. This works transparently for health checks and tool discovery.
 
 **How it works:**
 
@@ -214,19 +213,19 @@ Servers with static `Authorization` headers configured in their definition are n
 
 ## How it works
 
-The tool reads server definitions from `~/.config/mcp-setup/mcp.json` and writes to Claude Code's config files. When you select servers:
+The tool reads server definitions from `~/.config/cc-setup/mcp.json` and writes to Claude Code's config files. When you select servers:
 
 - **Selected servers** are written to the target config (`.mcp.json` or `~/.claude.json`), with the `description` field stripped
 - **Unchecked servers** (that exist in the central config) are removed from the target config
 - **Unknown servers** (not in the central config) are left untouched
 
-This means you can use `mcp-setup` alongside manually configured servers without conflicts.
+This means you can use `cc-setup` alongside manually configured servers without conflicts.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `~/.config/mcp-setup/mcp.json` | Central server registry |
+| `~/.config/cc-setup/mcp.json` | Central server registry |
 | `~/.claude.json` | Claude Code user-global config |
 | `.mcp.json` | Claude Code project-local config |
 | `~/.claude/settings.local.json` | User-scoped tool permissions |

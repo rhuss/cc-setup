@@ -12,9 +12,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/rhuss/cc-mcp-setup/internal/config"
-	"github.com/rhuss/cc-mcp-setup/internal/display"
-	mcpclient "github.com/rhuss/cc-mcp-setup/internal/mcp"
+	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/rhuss/cc-setup/internal/display"
+	mcpclient "github.com/rhuss/cc-setup/internal/mcp"
 )
 
 // manageAction represents the action chosen from the server list.
@@ -27,8 +27,17 @@ const (
 	actionDelete
 	actionSave
 	actionImport
-	actionTools
+	actionSavePlugins
+	actionSaveAll
 	actionQuit
+)
+
+// manageTab identifies which tab is active.
+type manageTab int
+
+const (
+	tabServers manageTab = iota
+	tabPlugins
 )
 
 // serverItem implements list.Item for the bubbles list.
@@ -40,7 +49,7 @@ type serverItem struct {
 
 func (i serverItem) Title() string       { return i.name }
 func (i serverItem) Description() string { return i.detail }
-func (i serverItem) FilterValue() string { return i.name + " " + i.detail + " " + i.desc }
+func (i serverItem) FilterValue() string { return i.name + filterSep + i.detail + " " + i.desc }
 
 // buildServerItems converts a ServerMap into list items with type, endpoint, and auth info.
 func buildServerItems(servers config.ServerMap) []list.Item {
@@ -169,9 +178,9 @@ type manageKeyMap struct {
 	Delete       key.Binding
 	Save         key.Binding
 	Import       key.Binding
-	Tools        key.Binding
 	ScopeProject key.Binding
 	ScopeUser    key.Binding
+	ScopeToggle  key.Binding
 	Quit         key.Binding
 }
 
@@ -183,15 +192,50 @@ func newManageKeyMap() manageKeyMap {
 		Delete:       key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 		Save:         key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "save")),
 		Import:       key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "import")),
-		Tools:        key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "tools")),
 		ScopeProject: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "project scope")),
 		ScopeUser:    key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "user scope")),
+		ScopeToggle:  key.NewBinding(key.WithKeys("."), key.WithHelp(".", "switch scope")),
 		Quit:         key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q", "quit")),
 	}
 }
 
 // bannerHeight is the number of lines the scope banner occupies.
 const bannerHeight = 1
+
+// filterSep separates the name from other fields in FilterValue().
+const filterSep = "\x00"
+
+// nameFirstFilter matches against item names first. If any name matches the
+// search term, only those results are returned. Otherwise it falls back to
+// matching against the full filter value (name + detail + description).
+func nameFirstFilter(term string, targets []string) []list.Rank {
+	names := make([]string, len(targets))
+	for i, t := range targets {
+		if idx := strings.Index(t, filterSep); idx >= 0 {
+			names[i] = t[:idx]
+		} else {
+			names[i] = t
+		}
+	}
+	if ranks := list.DefaultFilter(term, names); len(ranks) > 0 {
+		return ranks
+	}
+	// Strip separators so DefaultFilter sees clean strings.
+	clean := make([]string, len(targets))
+	for i, t := range targets {
+		clean[i] = strings.ReplaceAll(t, filterSep, " ")
+	}
+	return list.DefaultFilter(term, clean)
+}
+
+// tabKey switches between MCP Servers and Plugins tabs.
+var tabKey = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch tab"))
+
+// pendingChange describes a single unsaved modification.
+type pendingChange struct {
+	name   string
+	action string // "add", "remove", "enable", "disable"
+}
 
 // manageModel is the BubbleTea model for the unified server management screen.
 type manageModel struct {
@@ -204,6 +248,19 @@ type manageModel struct {
 	scope    string
 	servers  config.ServerMap
 	width    int
+
+	// Plugin tab state
+	tab            manageTab
+	pluginList     list.Model
+	pluginKeys     pluginKeyMap
+	plugins        []config.PluginInfo
+	pluginChecked  map[string]bool
+	pluginWidthPtr *int
+
+	// Quit confirmation state
+	confirmQuit          bool
+	pendingServerChanges []pendingChange
+	pendingPluginChanges []pendingChange
 }
 
 // loadCheckedState reads the Claude config for the given scope and returns
@@ -219,37 +276,124 @@ func loadCheckedState(servers config.ServerMap, scope string) map[string]bool {
 	return checked
 }
 
-// scopeBanner renders a full-width colored bar showing the active scope.
-func scopeBanner(scope string, width int) string {
+// tabbedBanner renders a full-width bar with pill-style tab selector on the
+// left and scope selector on the right. Active items are shown as colored
+// background pills (white text on colored bg), inactive items are dimmed.
+// The file path is shown dimmed between them.
+//
+// Layout:  [MCP Servers]  Plugins      path      [Project]  User
+func tabbedBanner(scope string, tab manageTab, width int) string {
 	if width <= 0 {
 		width = 80
 	}
 
-	path := config.ConfigPath(scope)
-	label := fmt.Sprintf(" %s  %s ", strings.ToUpper(scope), path)
-	pad := width - lipgloss.Width(label)
-	if pad < 0 {
-		pad = 0
-	}
-	label += strings.Repeat(" ", pad)
+	barBg := lipgloss.Color("#1e1e2e")
+	inactive := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#666666")).
+		Background(barBg)
 
-	var style lipgloss.Style
-	if scope == "project" {
-		style = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(lipgloss.Color("#225599"))
+	// Tab pill: teal family
+	tabPill := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff")).
+		Background(lipgloss.Color("#0e7490")).
+		Bold(true).
+		Padding(0, 1)
+
+	// Scope pills: blue for project, purple for user
+	projectPill := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff")).
+		Background(lipgloss.Color("#225599")).
+		Bold(true).
+		Padding(0, 1)
+	userPill := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff")).
+		Background(lipgloss.Color("#884488")).
+		Bold(true).
+		Padding(0, 1)
+
+	// Left side: tab selector
+	var serversRendered, pluginsRendered string
+	if tab == tabServers {
+		serversRendered = tabPill.Render("MCP Servers")
+		pluginsRendered = inactive.Render("Plugins")
 	} else {
-		style = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(lipgloss.Color("#884488"))
+		serversRendered = inactive.Render("MCP Servers")
+		pluginsRendered = tabPill.Render("Plugins")
+	}
+	sep := inactive.Render("  ")
+	tabPart := inactive.Render(" ") + serversRendered + sep + pluginsRendered
+
+	// Right side: scope selector
+	var projectRendered, userRendered string
+	if scope == "project" {
+		projectRendered = projectPill.Render("Project")
+		userRendered = inactive.Render("User")
+	} else {
+		projectRendered = inactive.Render("Project")
+		userRendered = userPill.Render("User")
+	}
+	scopePart := projectRendered + sep + userRendered + inactive.Render(" ")
+
+	// Center: file path (dimmed)
+	var path string
+	if tab == tabServers {
+		path = config.ConfigPath(scope)
+	} else {
+		path = config.PluginSettingsPath(scope)
+	}
+	pathStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#777777")).
+		Background(barBg)
+
+	// Calculate spacing
+	tabWidth := lipgloss.Width(tabPart)
+	scopeWidth := lipgloss.Width(scopePart)
+	pathWidth := lipgloss.Width(path)
+
+	// Distribute remaining space: path centered, with padding on both sides
+	remaining := width - tabWidth - scopeWidth
+	if remaining < pathWidth+4 {
+		// Not enough room for path, just pad between tab and scope
+		if remaining < 0 {
+			remaining = 0
+		}
+		padStyle := lipgloss.NewStyle().Background(barBg)
+		content := tabPart + padStyle.Render(strings.Repeat(" ", remaining)) + scopePart
+		return content
 	}
 
-	return style.Render(label)
+	leftPad := (remaining - pathWidth) / 2
+	rightPad := remaining - pathWidth - leftPad
+	if leftPad < 2 {
+		leftPad = 2
+	}
+	if rightPad < 1 {
+		rightPad = 1
+	}
+
+	padStyle := lipgloss.NewStyle().Background(barBg)
+
+	content := tabPart +
+		padStyle.Render(strings.Repeat(" ", leftPad)) +
+		pathStyle.Render(path) +
+		padStyle.Render(strings.Repeat(" ", rightPad)) +
+		scopePart
+
+	// Pad to full width
+	contentWidth := lipgloss.Width(content)
+	if contentWidth < width {
+		extra := width - contentWidth
+		content = tabPart +
+			padStyle.Render(strings.Repeat(" ", leftPad)) +
+			pathStyle.Render(path) +
+			padStyle.Render(strings.Repeat(" ", rightPad+extra)) +
+			scopePart
+	}
+
+	return content
 }
 
-func newManageModel(servers config.ServerMap, scope string, checked map[string]bool) manageModel {
+func newManageModel(servers config.ServerMap, scope string, checked map[string]bool, plugins []config.PluginInfo, pluginChecked map[string]bool, tab manageTab) manageModel {
 	items := buildServerItems(servers)
 	keys := newManageKeyMap()
 	health := make(map[string]mcpclient.HealthResult, len(servers))
@@ -257,31 +401,55 @@ func newManageModel(servers config.ServerMap, scope string, checked map[string]b
 	delegate := checkboxDelegate{checked: checked, health: health}
 
 	l := list.New(items, delegate, 0, 0)
-	l.Title = "MCP Servers"
-	l.Styles.Title = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("6")).
-		Padding(0, 1)
-	l.SetShowStatusBar(true)
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.Filter = nameFirstFilter
 	l.SetFilteringEnabled(true)
 	l.DisableQuitKeybindings()
 
-	// Short help: toggle, add, edit, delete, save, import, tools
+	// Short help: toggle, add, edit, delete, save, import, tab
 	l.AdditionalShortHelpKeys = func() []key.Binding {
-		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import, keys.Tools}
+		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import, tabKey}
 	}
 	// Full help adds: scope keys
 	l.AdditionalFullHelpKeys = func() []key.Binding {
-		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import, keys.Tools, keys.ScopeProject, keys.ScopeUser}
+		return []key.Binding{keys.Toggle, keys.Add, keys.Edit, keys.Delete, keys.Save, keys.Import, keys.ScopeProject, keys.ScopeUser, tabKey}
+	}
+
+	// Build plugin list
+	pluginItems := buildPluginItems(plugins)
+	pKeys := newPluginKeyMap()
+	pluginWidthPtr := new(int)
+	*pluginWidthPtr = 80
+	pDelegate := pluginCheckboxDelegate{checked: pluginChecked, width: pluginWidthPtr}
+
+	pl := list.New(pluginItems, pDelegate, 0, 0)
+	pl.SetShowTitle(false)
+	pl.SetShowStatusBar(false)
+	pl.Filter = nameFirstFilter
+	pl.SetFilteringEnabled(true)
+	pl.DisableQuitKeybindings()
+
+	pl.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{pKeys.Toggle, pKeys.ToggleAll, pKeys.Save, keys.ScopeProject, keys.ScopeUser, tabKey}
+	}
+	pl.AdditionalFullHelpKeys = func() []key.Binding {
+		return []key.Binding{pKeys.Toggle, pKeys.ToggleAll, pKeys.Save, keys.ScopeProject, keys.ScopeUser, tabKey}
 	}
 
 	return manageModel{
-		list:    l,
-		keys:    keys,
-		checked: checked,
-		health:  health,
-		scope:   scope,
-		servers: servers,
+		list:           l,
+		keys:           keys,
+		checked:        checked,
+		health:         health,
+		scope:          scope,
+		servers:        servers,
+		tab:            tab,
+		pluginList:     pl,
+		pluginKeys:     pKeys,
+		plugins:        plugins,
+		pluginChecked:  pluginChecked,
+		pluginWidthPtr: pluginWidthPtr,
 	}
 }
 
@@ -319,29 +487,56 @@ func (m manageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.list.SetSize(msg.Width, msg.Height-bannerHeight)
+		m.pluginList.SetSize(msg.Width, msg.Height-bannerHeight)
+		if m.pluginWidthPtr != nil {
+			*m.pluginWidthPtr = msg.Width
+		}
 		return m, nil
 
 	case tea.KeyMsg:
-		// Don't intercept keys while filtering
-		if m.list.FilterState() == list.Filtering {
-			break
-		}
-
-		switch {
-		case key.Matches(msg, m.keys.Quit):
-			m.action = actionQuit
-			return m, tea.Quit
-
-		case key.Matches(msg, m.keys.Toggle):
-			if item, ok := m.list.SelectedItem().(serverItem); ok {
-				m.checked[item.name] = !m.checked[item.name]
+		// Handle quit confirmation dialog
+		if m.confirmQuit {
+			switch msg.String() {
+			case "s":
+				m.action = actionSaveAll
+				return m, tea.Quit
+			case "d":
+				m.action = actionQuit
+				return m, tea.Quit
+			case "esc":
+				m.confirmQuit = false
 				return m, nil
 			}
+			return m, nil
+		}
 
+		// Route to the correct tab's filter state check
+		if m.tab == tabServers && m.list.FilterState() == list.Filtering {
+			break
+		}
+		if m.tab == tabPlugins && m.pluginList.FilterState() == list.Filtering {
+			var cmd tea.Cmd
+			m.pluginList, cmd = m.pluginList.Update(msg)
+			return m, cmd
+		}
+
+		// Tab switching
+		if key.Matches(msg, tabKey) {
+			if m.tab == tabServers {
+				m.tab = tabPlugins
+			} else {
+				m.tab = tabServers
+			}
+			return m, nil
+		}
+
+		// Scope switching (shared between tabs)
+		switch {
 		case key.Matches(msg, m.keys.ScopeProject):
 			if m.scope != "project" {
 				m.scope = "project"
 				m.reloadCheckedState()
+				m.reloadPluginCheckedState()
 			}
 			return m, nil
 
@@ -349,8 +544,47 @@ func (m manageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.scope != "user" {
 				m.scope = "user"
 				m.reloadCheckedState()
+				m.reloadPluginCheckedState()
 			}
 			return m, nil
+
+		case key.Matches(msg, m.keys.ScopeToggle):
+			if m.scope == "project" {
+				m.scope = "user"
+			} else {
+				m.scope = "project"
+			}
+			m.reloadCheckedState()
+			m.reloadPluginCheckedState()
+			return m, nil
+		}
+
+		// Quit (shared between tabs)
+		if key.Matches(msg, m.keys.Quit) {
+			serverChanges := m.computeServerChanges()
+			pluginChanges := m.computePluginChanges()
+			if len(serverChanges) > 0 || len(pluginChanges) > 0 {
+				m.confirmQuit = true
+				m.pendingServerChanges = serverChanges
+				m.pendingPluginChanges = pluginChanges
+				return m, nil
+			}
+			m.action = actionQuit
+			return m, tea.Quit
+		}
+
+		// Tab-specific key handling
+		if m.tab == tabPlugins {
+			return m.updatePluginTab(msg)
+		}
+
+		// Servers tab keys
+		switch {
+		case key.Matches(msg, m.keys.Toggle):
+			if item, ok := m.list.SelectedItem().(serverItem); ok {
+				m.checked[item.name] = !m.checked[item.name]
+				return m, nil
+			}
 
 		case key.Matches(msg, m.keys.Add):
 			m.action = actionAdd
@@ -377,18 +611,48 @@ func (m manageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Import):
 			m.action = actionImport
 			return m, tea.Quit
-
-		case key.Matches(msg, m.keys.Tools):
-			if item, ok := m.list.SelectedItem().(serverItem); ok {
-				m.action = actionTools
-				m.selected = item.name
-				return m, tea.Quit
-			}
 		}
 	}
 
+	if m.tab == tabPlugins {
+		var cmd tea.Cmd
+		m.pluginList, cmd = m.pluginList.Update(msg)
+		return m, cmd
+	}
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+// updatePluginTab handles key events when the plugins tab is active.
+func (m manageModel) updatePluginTab(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.pluginKeys.Toggle):
+		if item, ok := m.pluginList.SelectedItem().(pluginItem); ok {
+			m.pluginChecked[item.key] = !m.pluginChecked[item.key]
+			return m, nil
+		}
+
+	case key.Matches(msg, m.pluginKeys.ToggleAll):
+		allChecked := true
+		for _, p := range m.plugins {
+			if !m.pluginChecked[p.Key] {
+				allChecked = false
+				break
+			}
+		}
+		for _, p := range m.plugins {
+			m.pluginChecked[p.Key] = !allChecked
+		}
+		return m, nil
+
+	case key.Matches(msg, m.pluginKeys.Save):
+		m.action = actionSavePlugins
+		return m, tea.Quit
+	}
+
+	var cmd tea.Cmd
+	m.pluginList, cmd = m.pluginList.Update(msg)
 	return m, cmd
 }
 
@@ -406,8 +670,100 @@ func (m *manageModel) reloadCheckedState() {
 	}
 }
 
+// reloadPluginCheckedState clears the plugin checked map and refills it with
+// the effective enabled state for the current scope. User scope is the base;
+// project scope overlays on top. The map is mutated in place so the delegate's
+// reference stays valid.
+func (m *manageModel) reloadPluginCheckedState() {
+	for k := range m.pluginChecked {
+		delete(m.pluginChecked, k)
+	}
+	effective := config.EffectiveEnabledPlugins(m.scope)
+	for k, v := range effective {
+		m.pluginChecked[k] = v
+	}
+}
+
+// computeServerChanges returns the list of server changes vs the current config.
+func (m *manageModel) computeServerChanges() []pendingChange {
+	existing := config.ReadMcpServers(m.scope)
+	var changes []pendingChange
+	for _, name := range config.ServerNames(m.servers) {
+		_, inConfig := existing[name]
+		isChecked := m.checked[name]
+		if isChecked && !inConfig {
+			changes = append(changes, pendingChange{name, "add"})
+		} else if !isChecked && inConfig {
+			changes = append(changes, pendingChange{name, "remove"})
+		}
+	}
+	return changes
+}
+
+// computePluginChanges returns the list of plugin changes vs the current config.
+func (m *manageModel) computePluginChanges() []pendingChange {
+	effective := config.EffectiveEnabledPlugins(m.scope)
+	var changes []pendingChange
+	for _, p := range m.plugins {
+		isChecked := m.pluginChecked[p.Key]
+		wasChecked := effective[p.Key]
+		if isChecked && !wasChecked {
+			changes = append(changes, pendingChange{p.Key, "enable"})
+		} else if !isChecked && wasChecked {
+			changes = append(changes, pendingChange{p.Key, "disable"})
+		}
+	}
+	return changes
+}
+
 func (m manageModel) View() string {
-	return scopeBanner(m.scope, m.width) + "\n" + m.list.View()
+	banner := tabbedBanner(m.scope, m.tab, m.width)
+	if m.confirmQuit {
+		return banner + "\n" + m.confirmQuitView()
+	}
+	if m.tab == tabPlugins {
+		return banner + "\n" + m.pluginList.View()
+	}
+	return banner + "\n" + m.list.View()
+}
+
+// confirmQuitView renders the unsaved changes summary and action options.
+func (m manageModel) confirmQuitView() string {
+	var b strings.Builder
+
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	green := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	dim := lipgloss.NewStyle().Faint(true)
+	bold := lipgloss.NewStyle().Bold(true)
+
+	b.WriteString("\n  " + title.Render("Unsaved changes") + "\n")
+
+	if len(m.pendingServerChanges) > 0 {
+		b.WriteString("\n  " + bold.Render("MCP Servers") + "\n")
+		for _, c := range m.pendingServerChanges {
+			if c.action == "add" {
+				b.WriteString(fmt.Sprintf("    %s %s\n", green.Render("+ add   "), c.name))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s %s\n", red.Render("- remove"), c.name))
+			}
+		}
+	}
+
+	if len(m.pendingPluginChanges) > 0 {
+		b.WriteString("\n  " + bold.Render("Plugins") + "\n")
+		for _, c := range m.pendingPluginChanges {
+			if c.action == "enable" {
+				b.WriteString(fmt.Sprintf("    %s %s\n", green.Render("+ enable "), c.name))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s %s\n", red.Render("- disable"), c.name))
+			}
+		}
+	}
+
+	b.WriteString("\n  " + dim.Render("[s] Save & quit  [d] Discard & quit  [esc] Back to list") + "\n")
+
+	return b.String()
 }
 
 // runSave computes adds/removes vs the current Claude config, shows a summary,
@@ -486,9 +842,10 @@ func runSave(servers config.ServerMap, checked map[string]bool, scope string) er
 }
 
 // runManage is the outer loop that alternates between the BubbleTea screen and action handlers.
-// Scope persists across iterations so the user stays in their chosen scope.
+// Scope and tab persist across iterations so the user stays in their chosen state.
 func runManage() error {
 	scope := "project"
+	tab := tabServers
 
 	for {
 		servers, err := config.LoadServers()
@@ -501,7 +858,18 @@ func runManage() error {
 		}
 
 		checked := loadCheckedState(servers, scope)
-		m := newManageModel(servers, scope, checked)
+
+		// Discover plugins and compute effective enabled state
+		plugins, _ := config.DiscoverPlugins()
+		pluginEffective := config.EffectiveEnabledPlugins(scope)
+		// Merge plugin list with both user and project enabled maps
+		// so plugins referenced in either scope appear in the list
+		plugins = config.MergePluginSources(plugins,
+			config.ReadEnabledPlugins("user"),
+			config.ReadEnabledPlugins("project"),
+		)
+
+		m := newManageModel(servers, scope, checked, plugins, pluginEffective, tab)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 		result, err := p.Run()
 		if err != nil {
@@ -510,6 +878,7 @@ func runManage() error {
 
 		final := result.(manageModel)
 		scope = final.scope // preserve scope for next iteration
+		tab = final.tab     // preserve tab for next iteration
 
 		// Clear screen after leaving alt screen so inline forms start clean
 		if final.action != actionQuit && final.action != actionNone {
@@ -526,7 +895,7 @@ func runManage() error {
 			}
 
 		case actionEdit:
-			if err := runEdit(final.selected); err != nil && err != errCancelled {
+			if err := runServerDetail(final.selected, servers, final.scope, final.tab); err != nil && err != errCancelled {
 				return err
 			}
 
@@ -545,14 +914,157 @@ func runManage() error {
 				return err
 			}
 
-		case actionTools:
-			if err := runToolPermissions(final.selected, final.servers, final.scope); err != nil && err != errCancelled {
+		case actionSavePlugins:
+			if err := runSavePlugins(final.pluginChecked, final.scope); err != nil && err != errCancelled {
 				return err
 			}
+
+		case actionSaveAll:
+			if err := applySaveAll(final.servers, final.checked, final.pluginChecked, final.scope); err != nil {
+				return err
+			}
+			return nil
 		}
 
 		// Loop back to re-read config and show fresh list
 	}
+}
+
+// runSavePlugins saves the plugin enabled/disabled state to the scope's settings.json.
+// The checked map contains the effective (desired) state. For project scope,
+// WriteEnabledPlugins computes the delta from user scope automatically.
+func runSavePlugins(checked map[string]bool, scope string) error {
+	// Compare against current effective state to detect changes
+	existing := config.EffectiveEnabledPlugins(scope)
+
+	var enabled, disabled []string
+	for key, isChecked := range checked {
+		wasChecked := existing[key]
+		if isChecked && !wasChecked {
+			enabled = append(enabled, key)
+		} else if !isChecked && wasChecked {
+			disabled = append(disabled, key)
+		}
+	}
+
+	if len(enabled) == 0 && len(disabled) == 0 {
+		fmt.Println(display.StyleDim.Render("No plugin changes to apply."))
+		return nil
+	}
+
+	target := config.PluginSettingsPath(scope)
+	scopeLabel := "user (global)"
+	if scope == "project" {
+		scopeLabel = "project (overrides)"
+	}
+
+	fmt.Println()
+	fmt.Printf("  Scope: %s\n", display.StyleTitle.Render(scopeLabel))
+	fmt.Printf("  File:  %s\n", target)
+	fmt.Println()
+	if len(enabled) > 0 {
+		for _, name := range enabled {
+			fmt.Printf("  %s %s\n", display.StyleGreen.Render("enable "), name)
+		}
+	}
+	if len(disabled) > 0 {
+		for _, name := range disabled {
+			fmt.Printf("  %s %s\n", display.StyleRed.Render("disable"), name)
+		}
+	}
+	fmt.Println()
+
+	confirmed, err := confirm("Apply plugin changes?", true)
+	if err != nil {
+		return handleAbort(err)
+	}
+	if !confirmed {
+		return errCancelled
+	}
+
+	path, err := config.WriteEnabledPlugins(scope, checked)
+	if err != nil {
+		return fmt.Errorf("failed to write plugin settings: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("  %s plugin settings updated\n", display.StyleGreen.Render("Saved:"))
+	fmt.Printf("  Written to %s\n", path)
+	fmt.Println()
+
+	return nil
+}
+
+// applySaveAll saves both server and plugin changes without additional confirmation.
+// Used when the user confirms from the quit dialog.
+func applySaveAll(servers config.ServerMap, checked map[string]bool, pluginChecked map[string]bool, scope string) error {
+	saved := false
+
+	// Save server changes
+	existing := config.ReadMcpServers(scope)
+	var selected []string
+	for _, name := range config.ServerNames(servers) {
+		if checked[name] {
+			selected = append(selected, name)
+		}
+	}
+	var toRemove []string
+	for name := range existing {
+		if _, inCentral := servers[name]; inCentral && !checked[name] {
+			toRemove = append(toRemove, name)
+		}
+	}
+	if len(selected) > 0 || len(toRemove) > 0 {
+		entries := config.ServerMap{}
+		for _, name := range selected {
+			entries[name] = config.BuildEntryForClaude(servers[name])
+		}
+		path, err := config.WriteMcpServers(scope, entries, toRemove)
+		if err != nil {
+			return fmt.Errorf("failed to write server config: %w", err)
+		}
+		fmt.Println()
+		if len(entries) > 0 {
+			names := make([]string, 0, len(entries))
+			for n := range entries {
+				names = append(names, n)
+			}
+			fmt.Printf("  %s %s\n", display.StyleGreen.Render("Added"), strings.Join(names, ", "))
+		}
+		if len(toRemove) > 0 {
+			fmt.Printf("  %s %s\n", display.StyleRed.Render("Removed"), strings.Join(toRemove, ", "))
+		}
+		fmt.Printf("  Written to %s\n", path)
+		saved = true
+	}
+
+	// Save plugin changes
+	pluginEffective := config.EffectiveEnabledPlugins(scope)
+	hasPluginChanges := false
+	for k, isChecked := range pluginChecked {
+		if isChecked != pluginEffective[k] {
+			hasPluginChanges = true
+			break
+		}
+	}
+	if hasPluginChanges {
+		path, err := config.WriteEnabledPlugins(scope, pluginChecked)
+		if err != nil {
+			return fmt.Errorf("failed to write plugin settings: %w", err)
+		}
+		if !saved {
+			fmt.Println()
+		}
+		fmt.Printf("  %s plugin settings updated\n", display.StyleGreen.Render("Saved:"))
+		fmt.Printf("  Written to %s\n", path)
+		saved = true
+	}
+
+	if saved {
+		fmt.Println()
+	}
+
+	return nil
 }
 
 // runManageEmpty handles the case when no servers are configured.
@@ -573,7 +1085,7 @@ func runManageEmpty() error {
 				huh.NewOption("Quit", "quit"),
 			).
 			Value(&choice),
-	)).WithKeyMap(formKeyMap()).Run()
+	)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}

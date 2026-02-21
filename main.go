@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/rhuss/cc-mcp-setup/cmd"
+	"github.com/rhuss/cc-setup/cmd"
 )
 
 var version = "dev"

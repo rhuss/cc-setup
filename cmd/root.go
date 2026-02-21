@@ -14,12 +14,12 @@ func SetVersion(v string) {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "mcp-setup",
-	Short: "Manage MCP servers for Claude Code",
-	Long: `Interactive CLI to manage which MCP servers are active per project in Claude Code.
+	Use:   "cc-setup",
+	Short: "Manage MCP servers and plugins for Claude Code",
+	Long: `Interactive CLI to manage MCP servers and plugins per project in Claude Code.
 Define all your servers once in a central config, then cherry-pick which ones
-to enable for each project. This keeps Claude's context clean by loading only
-the tools you actually need.`,
+to enable for each project. Enable or disable plugins per scope. This keeps
+Claude's context clean by loading only the tools you actually need.`,
 	// Default: interactive management hub
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runManage()
@@ -39,7 +39,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("mcp-setup", version)
+		fmt.Println("cc-setup", version)
 	},
 }
 

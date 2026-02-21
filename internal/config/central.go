@@ -20,10 +20,10 @@ type centralConfig struct {
 // GetConfigDir returns the config directory, respecting XDG_CONFIG_HOME.
 func GetConfigDir() string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "mcp-setup")
+		return filepath.Join(xdg, "cc-setup")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "mcp-setup")
+	return filepath.Join(home, ".config", "cc-setup")
 }
 
 // GetConfigFile returns the path to the central server config.

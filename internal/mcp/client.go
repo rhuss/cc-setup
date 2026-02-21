@@ -9,7 +9,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/rhuss/cc-mcp-setup/internal/config"
+	"github.com/rhuss/cc-setup/internal/config"
 )
 
 // HealthStatus represents the reachability state of an MCP server.
@@ -33,7 +33,7 @@ type ToolInfo struct {
 
 // clientImpl is the Implementation sent during initialize.
 var clientImpl = &sdkmcp.Implementation{
-	Name:    "mcp-setup",
+	Name:    "cc-setup",
 	Version: "0.1.0",
 }
 

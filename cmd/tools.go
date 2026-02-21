@@ -12,9 +12,9 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/rhuss/cc-mcp-setup/internal/config"
-	"github.com/rhuss/cc-mcp-setup/internal/display"
-	mcpclient "github.com/rhuss/cc-mcp-setup/internal/mcp"
+	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/rhuss/cc-setup/internal/display"
+	mcpclient "github.com/rhuss/cc-setup/internal/mcp"
 )
 
 // toolCache caches discovered tools per server name across invocations within
@@ -135,7 +135,7 @@ type toolItem struct {
 
 func (i toolItem) Title() string       { return i.name }
 func (i toolItem) Description() string { return i.desc }
-func (i toolItem) FilterValue() string { return i.name + " " + i.desc }
+func (i toolItem) FilterValue() string { return i.name + filterSep + i.desc }
 
 // cleanDescription extracts a single-line summary from a possibly multi-line
 // tool description. It takes the first non-empty line and strips leading/trailing
@@ -304,7 +304,8 @@ func newToolsModel(serverName string, tools []mcpclient.ToolInfo, checked map[st
 		Bold(true).
 		Foreground(lipgloss.Color("6")).
 		Padding(0, 1)
-	l.SetShowStatusBar(true)
+	l.SetShowStatusBar(false)
+	l.Filter = nameFirstFilter
 	l.SetFilteringEnabled(true)
 	l.DisableQuitKeybindings()
 

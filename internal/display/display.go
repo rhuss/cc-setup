@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/x/term"
-	"github.com/rhuss/cc-mcp-setup/internal/config"
+	"github.com/rhuss/cc-setup/internal/config"
 )
 
 // Styles used throughout the CLI.
@@ -20,6 +20,7 @@ var (
 	StyleRed     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	StyleYellow  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	StyleDim     = lipgloss.NewStyle().Faint(true)
+	StyleLabel   = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 	StyleHeader  = lipgloss.NewStyle().Bold(true).Padding(0, 1)
 	StyleCell    = lipgloss.NewStyle().Padding(0, 1)
 

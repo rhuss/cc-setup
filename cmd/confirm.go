@@ -6,11 +6,32 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// formTheme returns a huh theme that uses the app's cyan color scheme
+// instead of the default purple/blue. Applied to all huh forms for
+// visual consistency with the TUI.
+func formTheme() *huh.Theme {
+	t := huh.ThemeBase()
+
+	cyan := lipgloss.Color("6")
+
+	// Titles and text cursor in cyan
+	t.Focused.Title = t.Focused.Title.Foreground(cyan)
+	t.Focused.TextInput.Cursor = t.Focused.TextInput.Cursor.Foreground(cyan)
+	t.Focused.SelectSelector = t.Focused.SelectSelector.Foreground(cyan)
+	t.Focused.SelectedOption = t.Focused.SelectedOption.Foreground(cyan)
+	t.Focused.FocusedButton = t.Focused.FocusedButton.
+		Background(cyan).
+		Foreground(lipgloss.Color("#ffffff"))
+	t.Focused.TextInput.Prompt = t.Focused.TextInput.Prompt.Foreground(cyan)
+
+	return t
+}
+
 // confirmTheme returns a theme with green Yes / red No button colors.
 // The "focused" button (the currently selected one) gets the bright color,
 // the other button gets a dimmed version.
 func confirmTheme() *huh.Theme {
-	t := huh.ThemeBase()
+	t := formTheme()
 
 	button := lipgloss.NewStyle().Padding(0, 2).MarginRight(1)
 

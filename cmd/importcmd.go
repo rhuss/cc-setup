@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/rhuss/cc-mcp-setup/internal/config"
-	"github.com/rhuss/cc-mcp-setup/internal/display"
+	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/rhuss/cc-setup/internal/display"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +35,7 @@ func runImport() error {
 				huh.NewOption(fmt.Sprintf("User          %s", display.StyleDim.Render(userPath)), "user"),
 			).
 			Value(&source),
-	)).WithKeyMap(formKeyMap()).Run()
+	)).WithTheme(formTheme()).WithKeyMap(formKeyMap()).Run()
 	if err != nil {
 		return handleAbort(err)
 	}
@@ -120,7 +120,7 @@ func runImport() error {
 	}
 	fmt.Printf("  Written to %s\n", config.GetConfigFile())
 	fmt.Println()
-	fmt.Println(display.StyleDim.Render("You can now run 'mcp-setup' to select servers per project."))
+	fmt.Println(display.StyleDim.Render("You can now run 'cc-setup' to select servers per project."))
 	fmt.Println()
 	return nil
 }
