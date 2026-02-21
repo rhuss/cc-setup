@@ -7,7 +7,9 @@
       "Bash(make build:*)",
       "Bash(go list:*)",
       "Bash(python3:*)",
-      "Bash(go doc:*)"
+      "Bash(go doc:*)",
+      "Bash(# Check what files are in the plugins that have neither plugin.json nor hooks.json for path in ~/.claude/plugins/cache/claude-code-plugins/plugin-dev/0.1.0 ~/.claude/plugins/cache/claude-plugins-official/github/452c38756951 ~/.claude/plugins/cache/claude-plugins-official/gopls-lsp/1.0.0 ~/.claude/plugins/cache/jira-dev-marketplace/jira/0.2.5 ~/.claude/plugins/cache/prose-plugin-development/prose/1.0.0; do echo \"\"=== $path ===\"\"; ls -1 \"\"$path\"\")",
+      "Bash(done)"
     ]
   }
 }

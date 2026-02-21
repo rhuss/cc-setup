@@ -2,3 +2,5 @@ cc-setup
 cc-setup-*
 mcp-setup
 dist/
+.claude/settings.json
+.claude/settings.local.json
