@@ -6,11 +6,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "dev"
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
 
-// SetVersion sets the version string from main.
-func SetVersion(v string) {
+// SetVersionInfo sets the version, commit, and date strings from main.
+func SetVersionInfo(v, c, d string) {
 	version = v
+	commit = c
+	date = d
+	rootCmd.Version = fmt.Sprintf("%s (%s %s)", version, commit, date)
 }
 
 var rootCmd = &cobra.Command{
@@ -31,6 +38,7 @@ Central server config: ~/.config/cc-setup/mcp.json (or $XDG_CONFIG_HOME/cc-setup
 }
 
 func init() {
+	rootCmd.SetVersionTemplate("cc-setup {{ .Version }}\n")
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(removeCmd)
 	rootCmd.AddCommand(importCmd)
@@ -41,7 +49,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("cc-setup", version)
+		fmt.Printf("cc-setup %s (%s %s)\n", version, commit, date)
 	},
 }
 
