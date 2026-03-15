@@ -9,7 +9,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/cc-deck/cc-setup/internal/config"
 )
 
 // HealthStatus represents the reachability state of an MCP server.

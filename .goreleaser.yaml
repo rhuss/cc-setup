@@ -34,11 +34,11 @@ changelog:
 
 brews:
   - repository:
-      owner: rhuss
+      owner: cc-deck
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/rhuss/cc-setup
+    homepage: https://github.com/cc-deck/cc-setup
     description: Interactive CLI to manage MCP servers for Claude Code
     license: Apache-2.0
     install: |

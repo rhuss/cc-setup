@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/cc-deck/cc-setup/internal/config"
 )
 
 // tokenEndpointCache caches discovered token endpoints by origin.

@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/x/term"
-	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/cc-deck/cc-setup/internal/config"
 )
 
 // Styles used throughout the CLI.

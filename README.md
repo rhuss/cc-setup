@@ -31,19 +31,19 @@ The practical effect is real. An MCP server with 20 tools that you only need in 
 **Homebrew** (recommended):
 
 ```bash
-brew install rhuss/tap/cc-setup
+brew install cc-deck/tap/cc-setup
 ```
 
 **Install script** (alternative):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rhuss/cc-setup/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/cc-deck/cc-setup/main/install.sh | sh
 ```
 
 ### Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rhuss/cc-setup/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/cc-deck/cc-setup/main/install.sh | sh
 ```
 
 The install script detects your OS and architecture (amd64/arm64), downloads the correct binary, verifies the SHA256 checksum, and installs to `~/.local/bin`.
@@ -51,12 +51,12 @@ The install script detects your OS and architecture (amd64/arm64), downloads the
 To install to a different location:
 
 ```bash
-INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/rhuss/cc-setup/main/install.sh | sudo sh
+INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/cc-deck/cc-setup/main/install.sh | sudo sh
 ```
 
 ### Other options
 
-Pre-built binaries for all platforms are available on the [Releases page](https://github.com/rhuss/cc-setup/releases).
+Pre-built binaries for all platforms are available on the [Releases page](https://github.com/cc-deck/cc-setup/releases).
 
 To build from source:
 
@@ -177,8 +177,8 @@ Inherited servers also show dimmed name and detail text when not focused, making
 **Save behavior for inherited servers:**
 
 - Checking an inherited server is a no-op on save (it's already active via the parent config, no redundant entry is written to the local `.mcp.json`)
-- Unchecking an inherited server adds it to `disabledMcpServers` in `~/.claude.json`, which tells Claude Code to suppress it for this project
-- Re-checking a previously disabled inherited server removes it from `disabledMcpServers`
+- Unchecking an inherited server adds it to `disabledMcpjsonServers` in `.claude/settings.local.json`, which tells Claude Code to suppress it for this project
+- Re-checking a previously disabled inherited server removes it from `disabledMcpjsonServers`
 
 **Detail view:** Pressing `e`/`enter` on any server shows a "Source" field indicating which `.mcp.json` file provides the server definition.
 
@@ -308,7 +308,7 @@ The tool reads server definitions from `~/.config/cc-setup/mcp.json` and writes 
 - **Selected servers** are written to the target config (`.mcp.json` or `~/.claude.json`), with the `description` field stripped
 - **Inherited servers** that remain checked are not written to the local config (they are already active via a parent `.mcp.json`)
 - **Unchecked servers** (that exist in the central config) are removed from the target config
-- **Unchecked inherited servers** are added to `disabledMcpServers` in `~/.claude.json` for the current project
+- **Unchecked inherited servers** are added to `disabledMcpjsonServers` in `.claude/settings.local.json` for the current project
 - **Unknown servers** (not in the central config) are left untouched
 
 This means you can use `cc-setup` alongside manually configured servers without conflicts.
@@ -318,8 +318,8 @@ This means you can use `cc-setup` alongside manually configured servers without 
 | File | Purpose |
 |------|---------|
 | `~/.config/cc-setup/mcp.json` | Central server registry |
-| `~/.claude.json` | Claude Code user-global config (also stores `disabledMcpServers` per project) |
+| `~/.claude.json` | Claude Code user-global config |
 | `.mcp.json` | Claude Code project-local config (also read from parent directories for inheritance) |
 | `~/.claude/settings.local.json` | User-scoped tool permissions |
-| `.claude/settings.local.json` | Project-scoped tool permissions |
+| `.claude/settings.local.json` | Project-scoped tool permissions and `disabledMcpjsonServers` |
 | `~/.claude/.credentials.json` | Claude Code's OAuth tokens (read-only by this tool, except for token refresh write-back) |

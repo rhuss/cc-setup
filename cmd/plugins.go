@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/rhuss/cc-setup/internal/config"
+	"github.com/cc-deck/cc-setup/internal/config"
 )
 
 // pluginItem implements list.Item for the plugins list.

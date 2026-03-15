@@ -29,7 +29,7 @@ for cmd in asciinema tmux cc-setup npx; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Error: $cmd is not installed."
     case "$cmd" in
-      cc-setup)  echo "Install with: brew install rhuss/tap/cc-setup" ;;
+      cc-setup)  echo "Install with: brew install cc-deck/tap/cc-setup" ;;
       asciinema) echo "Install with: brew install asciinema" ;;
       tmux)      echo "Install with: brew install tmux" ;;
       npx)       echo "Install with: brew install node" ;;

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/rhuss/cc-setup/cmd"
+	"github.com/cc-deck/cc-setup/cmd"
 )
 
 var version = "dev"

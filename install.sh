@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install script for cc-setup
-# Usage: curl -fsSL https://raw.githubusercontent.com/rhuss/cc-setup/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/cc-deck/cc-setup/main/install.sh | sh
 #
 # Environment variables:
 #   INSTALL_DIR  - Installation directory (default: ~/.local/bin)
@@ -8,7 +8,7 @@
 
 set -e
 
-REPO="rhuss/cc-setup"
+REPO="cc-deck/cc-setup"
 BINARY="cc-setup"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 

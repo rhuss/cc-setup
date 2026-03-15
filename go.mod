@@ -1,4 +1,4 @@
-module github.com/rhuss/cc-setup
+module github.com/cc-deck/cc-setup
 
 go 1.25.0
 

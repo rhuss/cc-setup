@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/rhuss/cc-setup/internal/config"
-	"github.com/rhuss/cc-setup/internal/display"
+	"github.com/cc-deck/cc-setup/internal/config"
+	"github.com/cc-deck/cc-setup/internal/display"
 	"github.com/spf13/cobra"
 )
 
